@@ -1,65 +1,6 @@
-// import { CheckCircle2, ImageIcon, UploadIcon } from "lucide-react";
-// import React, { useState } from "react";
-// import { useOutletContext } from "react-router";
-
-// const Upload = () => {
-//   const [file, setFile] = useState<File | null>(null);
-//   const [isDragging, setDragging] = useState(false);
-//   const [progress, setProgress] = useState(0);
-
-//   const { isSignedIn } = useOutletContext<AuthContext>();
-
-//   return (
-//     <div className="upload">
-//       {!file ? (
-//         <div className={`dropzone ${isDragging ? "is-dragging" : ""}`}>
-//           <input
-//             type="file"
-//             className="drop-input"
-//             accept=".jpg,.jpeg,.png"
-//             disabled={!isSignedIn}
-//           />
-//           <div className="drop-content">
-//             <div className="drop-icon">
-//               <UploadIcon size={20} />
-//             </div>
-//             <p>
-//               {isSignedIn
-//                 ? "Click to upload or just drag and drop"
-//                 : "Sign in or sign up with Puter to upload"}
-//             </p>
-//             <p className="help">Maximum file size 50MB.</p>
-//           </div>
-//         </div>
-//       ) : (
-//         <div className="upload-status">
-//           <div className="status-content">
-//             <div className="status-icon">
-//               {progress === 100 ? (
-//                 <CheckCircle2 className="check" />
-//               ) : (
-//                 <ImageIcon className="image" />
-//               )}
-//             </div>
-
-//             <h3>{file.name}</h3>
-//             <div className="progress">
-//               <div className="bar" style={{ width: `${progress}%` }} />
-
-//               <p className="status-text">
-//                 {progress < 100 ? "Analyzing Floor Plan..." : "Redirecting..."}
-//               </p>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-//     </div>
-//   );
-// };
-
 // export default Upload;
 import { CheckCircle2, ImageIcon, UploadIcon } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext } from "react-router";
 import {
   PROGRESS_INTERVAL_MS,
@@ -76,7 +17,17 @@ const Upload = ({ onComplete }: UploadProps) => {
   const [isDragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { isSignedIn } = useOutletContext<AuthContext>();
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const processFile = (selectedFile: File) => {
     if (!isSignedIn) return;
@@ -85,15 +36,23 @@ const Upload = ({ onComplete }: UploadProps) => {
     setProgress(0);
 
     const reader = new FileReader();
+
+    reader.onerror = () => {
+      // 👈 add this
+      setFile(null);
+      setProgress(0);
+    };
+
     reader.onload = () => {
       const base64 = reader.result as string;
 
-      const interval = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         setProgress((prev) => {
           const next = prev + PROGRESS_STEP;
           if (next >= 100) {
-            clearInterval(interval);
-            setTimeout(() => {
+            clearInterval(intervalRef.current!);
+            intervalRef.current = null;
+            timeoutRef.current = setTimeout(() => {
               onComplete(base64);
             }, REDIRECT_DELAY_MS);
             return 100;
@@ -126,7 +85,8 @@ const Upload = ({ onComplete }: UploadProps) => {
     setDragging(false);
     if (!isSignedIn) return;
     const dropped = e.dataTransfer.files?.[0];
-    if (dropped) processFile(dropped);
+    const allowedTypes = ["image/jpeg", "image/png"];
+    if (dropped && allowedTypes.includes(dropped.type)) processFile(dropped);
   };
 
   return (
